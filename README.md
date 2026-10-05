@@ -1,8 +1,8 @@
-# Incremental cut procedure for Densest Subgraph Problem
+# Incremental Parametric Cut (IPC) procedure for Densest Subgraph Problem
 
-This repository provides an exact densest subgraph extractor, using an incremental parametric implementation of pseudoflow for minimum cut on directed graphs. In the proxy parametric minimum cut problem, the capacity of source-adjacent arcs is monotone non-increasing in the parameter lambda whereas the capacity of sink-adjacent arcs is monotone non-decreasing in lambda. This solver requires that the weights of the arcs and the nodes be positive.
+This repository provides an exact densest subgraph extractor, using the Incremental Parametric Cut (IPC) implementation of pseudoflow for minimum cut on directed graphs. In the proxy parametric minimum cut problem, the capacity of source-adjacent arcs is monotone non-increasing in the parameter lambda whereas the capacity of sink-adjacent arcs is monotone non-decreasing in lambda. This solver requires that the weights of the arcs and the nodes be positive.
 
-This implementation follows the procedure as described in:
+This implementation follows the Incremental Parametric Cut procedure as described in:
 
     D. S. Hochbaum, “Flow is best, fast and scalable: The incremental parametric cut for maximum density and other ratio subgraph problems,” in The 16th International Joint Conference on Knowledge Discovery, Knowledge Engineering and Knowledge Management (KDIR 2024), Porto-Portugal, 17-19 November, 2024, Proceedings, 2024.
 
@@ -10,7 +10,7 @@ This implementation is based on the original implementation of the [Simple Param
 
 # Compiling
 
-A makefile is provided. To compile the `incremental` executable, use:
+A makefile is provided. To compile the `IPC-DSP` executable, use:
 
 ```
 mkdir bin
@@ -21,7 +21,7 @@ make
 
 The executable reads the input file from stdin. To execute one of the examples, use:
 ```
-./bin/incremental < examples/example_unweighted.txt
+./bin/IPC-DSP < examples/example_unweighted.txt
 ```
 
 # Options

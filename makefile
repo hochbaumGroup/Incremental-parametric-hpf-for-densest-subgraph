@@ -1,8 +1,8 @@
 CFLAGS=-O4 -g  -DFAST_IO -DDIRECTED_CASE 
 BINDIR=bin
-SOURCES = src/1.0/incremental.c
+SOURCES = src/1.0/IPC-DSP.c
 OBJECTS = $(SOURCES:.c=.o)
-TARGET = incremental
+TARGET = IPC-DSP
 CC=gcc
 
 all: $(TARGET) 
