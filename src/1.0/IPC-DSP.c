@@ -10,9 +10,14 @@ typedef long long int llint;
 int readInt()
 {
   int res = 0;
+  int sign = 1;
   char c = getchar_unlocked();
   while( c < '0' || c > '9' )
   {
+    if (c == '-')
+    {
+      sign = -1;
+    }
     c = getchar_unlocked();
   }
 
@@ -21,7 +26,7 @@ int readInt()
     res = res*10 + (c - '0');
     c = getchar_unlocked();
   }
-  return res;
+  return sign*res;
 }
 
 static char *
@@ -85,8 +90,16 @@ lmin(long long a, long long b)
 long long
 ceil_div(long long a, long long b)
 {
-  return (a+b-1)/b;
+  // b > 0; C division truncates toward zero, so adjust for negative a
+  return (a >= 0) ? (a+b-1)/b : -((-a)/b);
 
+}
+
+long long
+floor_div(long long a, long long b)
+{
+  // b > 0
+  return (a >= 0) ? a/b : -((-a+b-1)/b);
 }
 
 static double 
@@ -157,9 +170,11 @@ static int numParams = 0;
 static int lastInternalArc = 0;
 static int weightedEdges = 0;
 static int weightedNodes = 0;
+static int valuedNodes = 0;
 
 static double initTime = 0.0f;
 static double injectedLambda = 0.0f;
+static int hasInjectedLambda = 0;
  
 long long currLambda = 0;
 
@@ -177,7 +192,7 @@ static double totWeightSourceSet = 0.0;
 
 static int *degrees = NULL;
 static int *adjacents = NULL;
-static int *value= NULL;
+static int *values = NULL;
 static int *weights = NULL;
 static char *inSourceSet = NULL;
 static char *bestSourceSet = NULL;
@@ -211,11 +226,12 @@ computeNumerator (char *sourceSet)
 
     res += weight * (sourceSet[from-2] & sourceSet[to-2]);
   }
-#ifdef DIRECTED_CASE
+  // node values U(S)
+  for (i=0; i<n; ++i)
+  {
+    res += values[i] * APP_VAL * sourceSet[i];
+  }
   return res;
-#else
-  return res/2;
-#endif
 
 }
 
@@ -466,6 +482,7 @@ computeHeuristicLambda()
     inSourceSet[u] = 1;
 
     denominator += weights[u];
+    numerator += values[u]*APP_VAL;
 
 
     for( e = firstEdge[u]; edges[e].u==u ; ++e)
@@ -528,6 +545,12 @@ readGraphFile (void)
     exit (1);
   }
 
+  if ((values= (int*) malloc (n * sizeof (int))) == NULL)
+  {
+    printf ("%s, %d: could not allocate memory.\n", __FILE__, __LINE__);
+    exit (1);
+  }
+
   if ((degrees= (int *) malloc (n * sizeof (int))) == NULL)
   {
     printf ("%s, %d: Could not allocate memory.\n", __FILE__, __LINE__);
@@ -535,11 +558,7 @@ readGraphFile (void)
   }
 #ifdef USE_HEURISTIC
 
-# ifdef DIRECTED_CASE
   int totalEdges = 2*m;
-# else
-  int totalEdges = m;
-# endif
 
   if ((edges = (Edge*) malloc ((totalEdges+1) * sizeof (Edge))) == NULL)
   {
@@ -611,6 +630,21 @@ readGraphFile (void)
 
       weights[i] = 1;
     }
+
+    if (valuedNodes)
+    {
+      int value = 0;
+#ifdef FAST_IO
+        value = readInt();
+#else
+        scanf("%d", &value);
+#endif
+      values[i] = value;
+    }
+    else
+    {
+      values[i] = 0;
+    }
       // we consider everything to be in the source set at start
 #ifndef USE_HEURISTIC
     inSourceSet[i] = 1;
@@ -667,12 +701,10 @@ readGraphFile (void)
       edges[currEdge].u = u-1; 
       edges[currEdge].v = v-1; 
       edges[currEdge++].w = w; 
-# ifdef DIRECTED_CASE
 
       edges[currEdge].v = u-1; 
       edges[currEdge].u = v-1; 
       edges[currEdge++].w = w; 
-# endif
 #endif
       // we invert the orientation of the network
       // to make source adjacent monotone increasing
@@ -715,15 +747,13 @@ readGraphFile (void)
       int to = i+2;
       int weight = weights[i];
       int degree = degrees[i];
+      // node value a_i acts as a self-loop on i
+      degree += values[i];
       ac->from = from;
       ac->to = to;
       ac->intercept = degree*APP_VAL;
       
-#ifdef DIRECTED_CASE
       ac->slope = weight;
-#else
-      ac->slope = 2*weight;
-#endif
 
       ++ adjacents[ac->from];
       ++ adjacents[ac->to];
@@ -732,15 +762,11 @@ readGraphFile (void)
       from = i+2;
       to = sink;
       weight = weights[i];
-      degree = degrees[i];
+      // degree already includes the node value
       ac->from = from;
       ac->to = to;
       ac->intercept = degree*APP_VAL;
-#ifdef DIRECTED_CASE
       ac->slope = weight;
-#else
-      ac->slope = 2*weight;
-#endif
       
       ++ adjacents[ac->from];
       ++ adjacents[ac->to];
@@ -756,10 +782,13 @@ readGraphFile (void)
   currLambda = computeHeuristicLambda();
 
 #else
-  currLambda = computeNumerator(inSourceSet) / computeSourceWeight(inSourceSet);
+  currLambda = floor_div(computeNumerator(inSourceSet), computeSourceWeight(inSourceSet));
 #endif
 
-  currLambda = max(currLambda,(long long) (injectedLambda*APP_VAL));
+  if (hasInjectedLambda)
+  {
+    currLambda = lmax(currLambda,(long long) (injectedLambda*APP_VAL));
+  }
   
   printf("c Initial lambda = %.*lf\n", DECIMALS,(double)currLambda/APP_VAL);
 
@@ -1376,7 +1405,14 @@ incrementalCut(void)
   //printf("c %d,%d,%.4lf,%.4lf,%.*lf,%.*lf,%d\n", n, m, initTime, totalTime, DECIMALS, (double)initLambda/APP_VAL, DECIMALS, (double)bestLambda/APP_VAL,iteration);
 	printf("\n");
 	printf("c Optimal solution found: density* = %.*lf\n", DECIMALS, (double)bestLambda/APP_VAL);
-	printf("c C(S, S) = %lld, q(S) = %lld\n", css/APP_VAL, qs);
+	if (valuedNodes)
+	{
+		printf("c C(S, S) + U(S) = %lld, q(S) = %lld\n", css/APP_VAL, qs);
+	}
+	else
+	{
+		printf("c C(S, S) = %lld, q(S) = %lld\n", css/APP_VAL, qs);
+	}
 	if ( dumpSourceSetFile != NULL )
 	{
 		dumpSourceSet(dumpSourceSetFile);
@@ -1792,6 +1828,10 @@ freeMemory (void)
 	{
 		free(weights);
 	}
+  if (values != NULL)
+	{
+		free(values);
+	}
   if (inSourceSet != NULL)
 	{
 		free(inSourceSet);
@@ -1815,26 +1855,32 @@ void printHelp(int argc, char *argv[])
   printf("  --startLambda L        start incremental procedure with L     \n");
   printf("  --weightedEdges        enable if input has weights on edges   \n");
   printf("  --weightedNodes        enable if input has weights on nodes   \n");
+  printf("  --valuedNodes          enable if input has values on nodes    \n");
+  printf("                         (integers of any sign, added to the    \n");
+  printf("                         numerator, like a self-loop)           \n");
   printf("  --dumpDensest FILE     dump list of nodes in optimal solution \n");
   printf("                         to FILE                                \n");
 
   printf("\n\nNote that this program read from stdin\n");
   printf("An example command is \'%s < mygraph.txt\' to read from file\n", argv[0]);
   printf("\n");
+  printf("The input is an undirected graph with N nodes (labeled 1..N)\n");
+  printf("and M edges. All fields are integers. Optional fields, shown\n");
+  printf("in [ ], appear only if their option is given:\n");
+  printf("  WEIGHT_NODE_i  node weight (denominator), --weightedNodes, default 1\n");
+  printf("  VALUE_NODE_i   node value (numerator),    --valuedNodes,   default 0\n");
+  printf("  WEIGHT_EDGE_k  edge weight (numerator),   --weightedEdges, default 1\n");
+  printf("Each edge is listed once, as TAIL HEAD with TAIL < HEAD.\n");
+  printf("\n");
   printf("The format of the input is as follows: \n");
   printf("\n");
   printf("N M\n");
-  printf("[WEIGHT_NODE_1]\n");
-  printf("[WEIGHT_NODE_2]\n");
+  printf("[WEIGHT_NODE_1] [VALUE_NODE_1]\n");
   printf("...\n");
-  printf("[WEIGHT_NODE_N]\n");
-  printf("FROM_EDGE_1 TO_EDGE_1 [WEIGHT_EDGE_1]\n");
-  printf("FROM_EDGE_2 TO_EDGE_2 [WEIGHT_EDGE_2]\n");
+  printf("[WEIGHT_NODE_N] [VALUE_NODE_N]\n");
+  printf("TAIL_EDGE_1 HEAD_EDGE_1 [WEIGHT_EDGE_1]\n");
   printf("...\n");
-  printf("FROM_EDGE_M TO_EDGE_M [WEIGHT_EDGE_M]\n");
-  printf("\n");
-  printf("Remember that for weighted graphs, options --weightedEdges \n");
-  printf("and/or --weightedNodes must be used.  \n");
+  printf("TAIL_EDGE_M HEAD_EDGE_M [WEIGHT_EDGE_M]\n");
 }
 
 void parseParameters(int argc, char *argv[])
@@ -1861,6 +1907,7 @@ void parseParameters(int argc, char *argv[])
     else if (strcmp(argv[i], "--startLambda")==0 )
     {
       injectedLambda = atof(argv[++i] );
+      hasInjectedLambda = 1;
     }
     else if (strcmp(argv[i], "--weightedEdges") == 0)
     {
@@ -1869,6 +1916,10 @@ void parseParameters(int argc, char *argv[])
     else if (strcmp(argv[i], "--weightedNodes") == 0)
     {
       weightedNodes = 1;
+    }
+    else if (strcmp(argv[i], "--valuedNodes") == 0)
+    {
+      valuedNodes = 1;
     }
     else if (strcmp(argv[i], "--dumpDensest") == 0)
 		{
